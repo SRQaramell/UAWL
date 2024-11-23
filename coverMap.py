@@ -1,4 +1,5 @@
 from collections import deque
+from glob import escape
 
 import numpy as np
 import random
@@ -6,6 +7,9 @@ from queue import PriorityQueue
 from PIL import Image
 import heapq
 import math
+
+from pygments.lexer import default
+from scipy.optimize import direct
 
 visibilityRange = [30,28,25,22,19]
 flyRoute = []
@@ -84,6 +88,7 @@ def update_visibility_matrix_drone(visibilityArray, visibilityRange, c_col, c_ro
     temp_array = visibilityArray
     for i in range(len(visibilityRange)):
         temp_array, changed = update_visibility_matrix(temp_array, c_col, c_row, i+1, visibilityRange[i])
+    flyRoute.append((c_col,c_row))
     return temp_array, changed
 
 def column_flyby(visibilityArray, column):
@@ -181,19 +186,77 @@ def find_route_to_closest_non_black(array, start_pos):
 
     return []  # Return empty list if no non-black pixel is found
 
+def move_closest_towards(route, target):
+    import math
+
+    def euclidean_distance(a, b):
+        """Calculate the Euclidean distance between two points."""
+        return math.sqrt((a[0] - b[0])**2 + (a[1] - b[1])**2)
+
+    def is_adjacent(a, b):
+        """Check if two points are adjacent in a grid."""
+        return abs(a[0] - b[0]) + abs(a[1] - b[1]) == 1
+
+    # Find the index of the tuple closest to the target
+    closest_idx = min(range(len(route)), key=lambda i: euclidean_distance(route[i], target))
+    closest_point = route[closest_idx]
+
+    # Determine the direction to move closer to the target
+    dx = target[0] - closest_point[0]
+    dy = target[1] - closest_point[1]
+    move = (int(dx / abs(dx)) if dx != 0 else 0, int(dy / abs(dy)) if dy != 0 else 0)
+    new_point = (closest_point[0] + move[0], closest_point[1] + move[1])
+
+    # Update the route
+    new_route = route[:]
+    new_route[closest_idx] = new_point
+
+    # Fix the rest of the route to maintain adjacency
+    for i in range(closest_idx - 1, -1, -1):  # Move backwards
+        if not is_adjacent(new_route[i], new_route[i + 1]):
+            dx = new_route[i + 1][0] - new_route[i][0]
+            dy = new_route[i + 1][1] - new_route[i][1]
+            new_route[i] = (new_route[i][0] + (dx // abs(dx) if dx != 0 else 0),
+                            new_route[i][1] + (dy // abs(dy) if dy != 0 else 0))
+
+    for i in range(closest_idx + 1, len(route)):  # Move forwards
+        if not is_adjacent(new_route[i - 1], new_route[i]):
+            dx = new_route[i][0] - new_route[i - 1][0]
+            dy = new_route[i][1] - new_route[i - 1][1]
+            new_route[i] = (new_route[i - 1][0] + (dx // abs(dx) if dx != 0 else 0),
+                            new_route[i - 1][1] + (dy // abs(dy) if dy != 0 else 0))
+
+    return new_route
+
+def optimize_map(visibilityarray, startPos):
+    tempArray = visibilityarray.copy()
+    pos = startPos
+    _, partRoute, problem = clear_map(tempArray, pos)
+    if partRoute != []:
+        partRoute = move_closest_towards(partRoute, problem)
+        tempArray = visibilityarray.copy()
+        tempArray = clear_map_given_path(tempArray, partRoute)
+        flyRoute.clear()
+        return clear_map(tempArray, partRoute[-1])
+    return []
 
 def clear_map(visibilityArray, startPos):
     tempArray = visibilityArray
     pos = startPos
+    cutRoute = []
+    problematicLocation = []
     while np.any(tempArray > 0):  # Continue while there are non-black pixels
         # Update the visibility matrix and record the route
         tempArray, changed = update_visibility_matrix_drone(tempArray, visibilityRange, pos[1], pos[0])
-        flyRoute.append(pos)
 
         # Find the next route if changes occurred
         if changed:
-            #newRoute = find_route_to_closest_non_black_priority(tempArray, pos, visibilityRange[0])
-            newRoute = bfs_route(tempArray, pos, visibilityRange[0])
+            newRoute = find_route_to_closest_non_black(tempArray, pos)
+            if len(newRoute) > 2*visibilityRange[0]:
+                problematicLocation = newRoute[-1]
+                cutRoute = flyRoute.copy()
+
+            #newRoute = bfs_route(tempArray, pos, visibilityRange[0])
 
             if not newRoute:  # If no route is found, exit the loop
                 break
@@ -203,11 +266,11 @@ def clear_map(visibilityArray, startPos):
             pos = newRoute.pop(0)
             if pos == old_pos and len(newRoute) > 0:
                 pos = newRoute.pop(0)
-        else:
+        #else:
             # If no changes were made, break to avoid infinite loops
-            break
+            # break
 
-    return tempArray
+    return tempArray, cutRoute, problematicLocation
 
 
 def find_minimal_cells_to_map_clear(matrix):
@@ -569,27 +632,186 @@ def bfs_route(matrix, start, radius):
 
     return route
 
-baseMap = generateTestMap(100,100)
+def clear_matrix_with_drone(matrix, radius):
+    rows, cols = matrix.shape
+    cleared_matrix = matrix.copy()
+
+    # Calculate the minimum distance to the border to ensure coverage
+    a = int(math.ceil(radius / math.sqrt(2)))  # Ceiling ensures full coverage
+    step = 2 * a  # Step for moving vertically
+
+    # Entry point
+    x, y = a, 0  # Start position is fixed at (0, radius // 2)
+    vert = True
+    # Zigzag logic: start moving to the right
+    startDir = ""
+    if x == 0 or x == rows - 1:
+        if y < cols/2:
+            direction = "right"
+        else:
+            direction = "left"
+        vert = False
+    elif y == 0 or y == cols - 1:
+        if x < rows/2:
+            direction = "down"
+        else:
+            direction = "up"
+
+    esca = "not"
+
+    if x == 0:
+        esca = "down"
+    elif x == rows - 1:
+        esca = "up"
+    elif y == 0:
+        esca = "right"
+    else:
+        esca = "left"
+
+    startEsca = esca
+
+    # Function to check if a position is within bounds
+    def is_valid(nx, ny):
+        return 0 <= nx < rows and 0 <= ny < cols
+
+    finished = False
+    next_x = 0
+    next_y = 0
+    def move_in_direction(direct):
+        nonlocal next_x, next_y
+        match direct:
+            case "right":
+                next_x, next_y = x, y + 1
+            case "left":
+                next_x, next_y = x, y - 1
+            case "up":
+                next_x, next_y = x - 1, y
+            case "down":
+                next_x, next_y = x + 1, y
+
+    target_y = 0
+    target_x = 0
+    prevDir = ""
+
+    while not finished:
+        # Clear cells in the radius
+        cleared_matrix, changed = update_visibility_matrix_drone(cleared_matrix, visibilityRange, y, x)
+
+        while esca != "not":
+            match esca:
+                case "right":
+                    if y >= a:
+                        esca = "not"
+                case "left":
+                    if y <= cols - a - 1:
+                        esca = "not"
+                case "up":
+                    if x <= rows-a-1:
+                        esca = "not"
+                case "down":
+                    if x >= a:
+                        esca = "not"
+            move_in_direction(esca)
+            if is_valid(next_x, next_y):
+                x, y = next_x, next_y
+            else:
+                finished = True
+            cleared_matrix, changed = update_visibility_matrix_drone(cleared_matrix, visibilityRange, y, x)
+
+
+        if vert:
+            if direction == "up":
+                if x >= a:
+                    move_in_direction(direction)
+                else:
+                    prevDir = "down"
+                    direction = startEsca
+                    if direction == "left":
+                        target_y = y - step
+                    else:
+                        target_y = y + step
+            elif direction == "down":
+                if x < cols - a - 1:
+                    move_in_direction(direction)
+                else:
+                    prevDir = "up"
+                    direction = startEsca
+                    if direction == "left":
+                        target_y = y - step
+                    else:
+                        target_y = y + step
+            if y != target_y:
+                move_in_direction(direction)
+            else:
+                direction = prevDir
+        else:
+            if direction == "left":
+                if y >= a:
+                    move_in_direction(direction)
+                else:
+                    prevDir = "right"
+                    direction = startEsca
+                    if direction == "up":
+                        target_x = x - step
+                    else:
+                        target_x = x + step
+            elif direction == "right":
+                if y < rows - a - 1:
+                    move_in_direction(direction)
+                else:
+                    prevDir = "left"
+                    direction = startEsca
+                    if direction == "down":
+                        target_x = x + step
+                    else:
+                        target_x = x - step
+            if x != target_x:
+                move_in_direction(direction)
+            else:
+                direction = prevDir
+
+
+        # Move to the next position if valid
+        if is_valid(next_x, next_y):
+            x, y = next_x, next_y
+        else:
+            finished = True
+
+    return cleared_matrix
+
+baseMap = generateTestMap(200,200)
 #priorityMap = baseMap
 mapWith2 = add_irregular_patches(baseMap,2,40)
 mapWith3 = add_irregular_patches(mapWith2,3,23)
 mapWith4 = add_irregular_patches(mapWith3,4,11)
 mapWith5 = add_irregular_patches(mapWith4,5,5)
 finalMap = mapWith5.copy()
+finalMap2 = finalMap.copy()
 save_to_csv(mapWith5, "test.csv")
+#cleared = clear_matrix_with_drone(finalMap, visibilityRange[4])
 #to_clear = find_minimal_cells_to_map_clear(mapWith5)
 #print(to_clear)
 #dist, path = dijkstra_2d_solution_matrix(mapWith5,(15,0),(15,0),to_clear)
 #path = create_path(finalMap, (15,0),to_clear)
 #print(path)
 #cleared = clear_map_given_path(finalMap, path)
-#image = generate_image_from_array(cleared, path)
+#image = generate_image_from_array(cleared, flyRoute)
+#print(f"Path length {len(flyRoute)}")
+#flyRoute.clear()
 #image.show()
+cleared, path, problematic = clear_map(finalMap,(int(math.ceil(visibilityRange[4] / math.sqrt(2))), 0) )
+image = generate_image_from_array(cleared, flyRoute)
+image.show()
+cleared2, _, _ = optimize_map(finalMap2, (int(math.ceil(visibilityRange[4] / math.sqrt(2))), 0))
+flyRoute.clear()
+image = generate_image_from_array(cleared2, flyRoute)
+#print(f"Path length {len(flyRoute)}")
+image.show()
 
-mapFlyby = clear_map(finalMap, (50,0))
-save_to_csv(mapFlyby, "testFly.csv")
-image = generate_image_from_array(mapFlyby,flyRoute)
+#mapFlyby = clear_map(finalMap, (50,0))
+#save_to_csv(mapFlyby, "testFly.csv")
+#image = generate_image_from_array(mapFlyby,flyRoute)
 #singleClear, changed = update_visibility_matrix_drone(mapWith5, visibilityRange, 150,150)
 #print(find_route_to_closest_non_black(singleClear, (150,140)))
 #image = generate_image_from_array(singleClear, flyRoute)
-image.show()
+#image.show()
