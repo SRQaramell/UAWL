@@ -53,7 +53,7 @@ def generate_image_from_array(array, red_pixels):
     }
 
     # Get the dimensions of the array
-    height, width = array.shape
+    width, height = array.shape
 
     # Create an empty image
     image = Image.new("RGB", (width, height), "black")
