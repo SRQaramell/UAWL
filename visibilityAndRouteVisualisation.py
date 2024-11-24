@@ -1,4 +1,34 @@
 from PIL import Image
+import asyncio
+import subprocess
+from io import BytesIO
+import os
+
+
+async def show_image_async(image: Image.Image, duration=3):
+    # Save the image to an in-memory buffer
+    buffer = BytesIO()
+    image.save(buffer, format="PNG")
+    buffer.seek(0)
+
+    # Write the image to a temporary file
+    temp_path = "temp_image.png"
+    with open(temp_path, "wb") as temp_file:
+        temp_file.write(buffer.read())
+
+    # Display the image using a subprocess
+    viewer = None
+    if os.name == "nt":  # Windows
+        viewer = ["start", "/wait"]
+    elif os.name == "posix":  # MacOS and Linux
+        viewer = ["xdg-open"]
+
+    process = subprocess.Popen(viewer + [temp_path], shell=True)
+    await asyncio.sleep(duration)  # Wait asynchronously
+    process.terminate()
+
+    # Clean up temporary file
+    os.remove(temp_path)
 
 def generate_image_with_red_pixels(width, height, red_pixels):
     image = Image.new("RGB", (width, height), "black")
@@ -41,3 +71,13 @@ def generate_image_from_array(array, red_pixels):
             pixels[x, y] = (255, 0, 0)  # Red color
 
     return image
+
+def create_gif(images, index):
+    images[0].save(
+        f"output{index}.gif",
+        save_all=True,
+        append_images=images[1:],
+        optimize=False,
+        duration=50,  # Duration per frame in milliseconds
+        loop=0  # Loop forever
+    )

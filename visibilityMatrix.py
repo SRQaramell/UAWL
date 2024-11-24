@@ -19,4 +19,4 @@ def update_visibility_matrix_drone(visibilityArray, visibilityRange, c_col, c_ro
     for i in range(len(visibilityRange)):
         temp_array, changed = update_visibility_matrix(temp_array, c_col, c_row, i+1, visibilityRange[i])
     flyRoute.append((c_col,c_row))
-    return temp_array, changed
+    return temp_array, changed, flyRoute
