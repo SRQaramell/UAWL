@@ -1,5 +1,5 @@
 import numpy as np
-
+from PIL import Image
 
 def save_array_to_txt(new_number_array, filename):
     with open(filename, 'w') as f:
@@ -7,7 +7,10 @@ def save_array_to_txt(new_number_array, filename):
             f.write(','.join(map(str, row)) + '\n')
 
 
-def process_image_to_number(img_array, defined_rgb_values):
+def process_image_to_number(img_dir,defined_rgb_values):
+    image = Image.open(img_dir)
+    image = image.convert("RGB")
+    img_array = np.array(image)
     rgb_values = defined_rgb_values['rgb']
     rgb_number = defined_rgb_values['number']
 
