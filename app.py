@@ -7,10 +7,11 @@ from image_processing import image_processing as img_p
 
 
 
-Img_dir = "Visual_data/NFVI_test.png"
-
-#img_p(image_array,NDVI)
-img_to_nb(Img_dir,NDVI)
+Img_dir1 = "Visual_data/2017-07-17-00_00_2017-07-17-23_59_Sentinel-2_L2A_Burned_Area_Detection.png"
+Img_dir2 = "Visual_data/2017-07-17-00_00_2017-07-17-23_59_Sentinel-2_L2A_Normalized_Difference_Vegetation_Index_(NDVI).png"
+Img_dir3 = "Visual_data/2017-07-17-00_00_2017-07-17-23_59_Sentinel-2_L2A_False_Color.png"
+img_p(Img_dir3,FC)
+#img_to_nb(Img_dir,NDVI)
 
 
 #txt_filename = 'output.txt'  # The text file containing the array of numbers

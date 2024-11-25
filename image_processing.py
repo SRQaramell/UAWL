@@ -1,7 +1,10 @@
 import numpy as np
 from PIL import Image
 
-def image_processing(img_array, defined_rgb_values):
+def image_processing(img_dir, defined_rgb_values):
+    image = Image.open(img_dir)
+    image = image.convert("RGB")
+    img_array = np.array(image)
     rgb_values = defined_rgb_values['rgb']
 
     height, width, _ = img_array.shape
@@ -26,3 +29,4 @@ def image_processing(img_array, defined_rgb_values):
 
     new_image = Image.fromarray(new_image_array.astype(np.uint8))
     new_image.show()
+    new_image.save("processed_image.png", format="PNG")
