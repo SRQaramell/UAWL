@@ -4,7 +4,7 @@ from visibilityMatrix import update_visibility_matrix_drone
 import testMapGeneration
 from visibilityAndRouteVisualisation import generate_image_from_array, create_gif
 from routeGeneration import find_route_to_closest_non_black
-from routeOptimization import insert_and_move_closest, insert_and_adjust_route
+from routeOptimization import insert_and_adjust_route
 
 visibilityRange = [15,13,11,9,7]
 images = []
@@ -20,7 +20,7 @@ def optimize_map(visibilityarray, startPos):
         partClearedArray = clear_map_given_path(visibilityarray.copy(), newRoute)
         image = generate_image_from_array(partClearedArray, newRoute)
         image.show()
-        clearedArray, needsOptimizing, partRoute, targetLocation = clear_map(partClearedArray, newRoute[-1], newRoute, ind)
+        clearedArray, needsOptimizing, partRoute, targetLocation = clear_map(partClearedArray, (newRoute[-1][1],newRoute[-1][0]), newRoute, ind)
         ind += 1
 
     finalArray = clear_map_given_path(orgArray, partRoute)
@@ -59,7 +59,8 @@ def clear_map(visibilityArray, startPos, startRoute, ind):
         #else:
             # If no changes were made, break to avoid infinite loops
             # break
-    create_gif(images, ind)
+    if len(images) > 0:
+        create_gif(images, ind)
     ind += 1
     if needOptimizing == True:
         return tempArray, needOptimizing, cutRoute, problematicLocation

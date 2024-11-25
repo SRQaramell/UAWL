@@ -43,6 +43,48 @@ def insert_and_adjust_route(original_rou, target_cell):
         """Calculate Manhattan distance between two cells."""
         return abs(cell1[0] - cell2[0]) + abs(cell1[1] - cell2[1])
 
+    def move_cell_adjacent(cell_a, cell_b):
+        # Calculate the difference between the coordinates
+        dx = cell_b[0] - cell_a[0]
+        dy = cell_b[1] - cell_a[1]
+
+        # Determine the direction
+        direction = ""
+        if dx < 0:
+            direction += "N"
+        elif dx > 0:
+            direction += "S"
+        if dy < 0:
+            direction += "W"
+        elif dy > 0:
+            direction += "E"
+
+        # Move cell B adjacent to cell A in the calculated direction
+        new_x = cell_a[0]
+        new_y = cell_a[1]
+
+        if "N" in direction:
+            new_x -= 1
+        elif "S" in direction:
+            new_x += 1
+
+        if "W" in direction:
+            new_y -= 1
+        elif "E" in direction:
+            new_y += 1
+
+        new_c = (new_x, new_y)
+        return new_c
+
+    def are_adjacent(cell1, cell2):
+        # Calculate the differences in x and y coordinates
+        dx = abs(cell1[0] - cell2[0])
+        dy = abs(cell1[1] - cell2[1])
+        print(f"cell1 {cell1}, cell2 {cell2}")
+        # Cells are adjacent if the difference is 1 in either direction
+        # or both differences are 1 for diagonal adjacency
+        return (dx == 1 and dy == 0) or (dx == 0 and dy == 1) or (dx == 1 and dy == 1)
+
     # Find the index of the closest cell in the route
     distances = [distance(cell, target_cell) for cell in original_route]
     closest_index = np.argmin(distances)
@@ -56,35 +98,62 @@ def insert_and_adjust_route(original_rou, target_cell):
     original_route.insert(closest_index + 1, new_cell)
 
     # Ensure continuity by adjusting nearby cells
-    i = closest_index + 1
-    route_length = len(original_route)
-
+    i = j = closest_index + 1
+    start = closest_index + 1
+    threshold = 10
     # Adjust cells before the new cell
-    for j in range(i - 1, 0, -1):
-        if distance(original_route[j], original_route[j - 1]) > 1:
-            if j >= 15:  # If fixing breaks 15+ cells, insert new ones instead
-                diff = np.array(original_route[j]) - np.array(original_route[j - 1])
-                step = diff // abs(diff).max()
-                intermediate = tuple(np.array(original_route[j - 1]) + step)
-                original_route.insert(j, intermediate)
-            else:
-                original_route[j - 1] = (
-                    original_route[j][0] - np.sign(original_route[j][0] - original_route[j - 1][0]),
-                    original_route[j][1] - np.sign(original_route[j][1] - original_route[j - 1][1]),
-                )
 
-    # Adjust cells after the new cell
-    for j in range(i + 1, route_length):
-        if distance(original_route[j], original_route[j - 1]) > 1:
-            if route_length - j >= 15:  # If fixing breaks 15+ cells, insert new ones instead
-                diff = np.array(original_route[j]) - np.array(original_route[j - 1])
-                step = diff // abs(diff).max()
-                intermediate = tuple(np.array(original_route[j - 1]) + step)
-                original_route.insert(j, intermediate)
-            else:
-                original_route[j] = (
-                    original_route[j - 1][0] + np.sign(original_route[j][0] - original_route[j - 1][0]),
-                    original_route[j - 1][1] + np.sign(original_route[j][1] - original_route[j - 1][1]),
-                )
+    while not are_adjacent(original_route[i], original_route[i-1]) and original_route[i] != original_route[i-1]:
+        original_route[i-1] = move_cell_adjacent(original_route[i],original_route[start-threshold])
+        i -= 1
+        if i == start - threshold:
+            break
 
-    return original_route
+    while not are_adjacent(original_route[j], original_route[j+1]) and original_route[j] != original_route[j+1]:
+        original_route[j+1] = move_cell_adjacent(original_route[j],original_route[start+threshold])
+        j += 1
+        if j == start + threshold:
+            break
+
+    def ensure_no_autoloop(lst):
+        # Create an empty list to store the result
+        result = []
+
+        # Iterate through the original list
+        for i in range(len(lst)):
+            # If the result list is empty or the last element in result is different from the current one, append it
+            if not result or lst[i] != result[-1]:
+                result.append(lst[i])
+
+        return result
+
+    def ensure_continuity(route):
+
+        # Create a new list to store the adjusted route
+        adjusted_route = [route[0]]  # Start with the first cell
+
+        # Iterate through the route and check if each pair of neighboring cells are adjacent
+        for i in range(1, len(route)):
+            current_cell = route[i - 1]
+            next_cell = route[i]
+            # If the cells are not adjacent, insert intermediate cells
+            while not are_adjacent(current_cell, next_cell):
+                # Calculate direction from current_cell to next_cell
+                dx = next_cell[0] - current_cell[0]
+                dy = next_cell[1] - current_cell[1]
+
+                # Move in the direction of dx, dy towards next_cell
+                if dx != 0:
+                    current_cell = (current_cell[0] + (1 if dx > 0 else -1), current_cell[1])
+                if dy != 0:
+                    current_cell = (current_cell[0], current_cell[1] + (1 if dy > 0 else -1))
+
+                # Insert the intermediate cell into the route
+                adjusted_route.append(current_cell)
+
+            # Once the cells are adjacent, add the next_cell to the adjusted route
+            adjusted_route.append(next_cell)
+
+        return adjusted_route
+
+    return ensure_continuity(ensure_no_autoloop(original_route))
